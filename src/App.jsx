@@ -6,7 +6,7 @@ import {
 } from "firebase/firestore";
 import { ArrowLeft, Send, Trash2, ShieldCheck, Zap, LogOut } from "lucide-react";
 
-const DEMO_ADMIN_PASSWORD = "demo123"; // TODO: ganti mekanisme ini sebelum benar-benar publik
+const DEMO_ADMIN_PASSWORD = "demo12"; // TODO: ganti mekanisme ini sebelum benar-benar publik
 const ONLINE_WINDOW_MS = 20000;
 const HEARTBEAT_MS = 8000;
 
