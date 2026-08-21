@@ -6,7 +6,41 @@ import {
 } from "firebase/firestore";
 import { ArrowLeft, Send, Trash2, ShieldCheck, Zap, LogOut } from "lucide-react";
 
-const DEMO_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "salahsatu";
+const DEMO_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "demo123";
+const VAPID_PUBLIC_KEY = "BMY0TN_Vd1nrMSkzzBntg2Qw-QQHTMSSEjo8FuK67bdlDHi5Ix_mAgH6q89T8BJbFWYtZpNnRv6vKvxoAG9u9XY";
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
+async function subscribeAdminToPush() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    await setDoc(doc(db, "push-subscriptions", "admin"), sub.toJSON());
+  } catch (e) { console.error("Gagal subscribe push:", e); }
+}
+
+async function notifyAdminPush(title, body) {
+  try {
+    const snap = await getDoc(doc(db, "push-subscriptions", "admin"));
+    if (!snap.exists()) return;
+    await fetch("/api/send-push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscription: snap.data(), title, body }),
+    });
+  } catch (e) { console.error("Gagal kirim push:", e); }
+}
 const ONLINE_WINDOW_MS = 20000;
 const HEARTBEAT_MS = 8000;
 
@@ -92,9 +126,11 @@ export default function App() {
           const isOpenNow = screen === "admin-chat" && activeAdminConvoRef.current === name && document.visibilityState === "visible";
           if (newCount > prevCount && !isOpenNow) {
             const last = convo.messages[convo.messages.length - 1];
-            try {
-              new Notification(`Pesan baru dari ${name}`, { body: last?.text || "", tag: `chat-${name}` });
-            } catch (e) { console.error(e); }
+            if (navigator.serviceWorker) {
+              navigator.serviceWorker.ready
+                .then((reg) => reg.showNotification(`Pesan baru dari ${name}`, { body: last?.text || "", tag: `chat-${name}` }))
+                .catch((e) => console.error(e));
+            }
           }
         });
       }
@@ -147,14 +183,19 @@ export default function App() {
     setDraft("");
     await appendMessage(visitorName, "visitor", text);
     setPresence(visitorName);
+    notifyAdminPush(`Pesan baru dari ${visitorName}`, text);
   }
 
   function tryAdminLogin() {
     if (passwordInput === DEMO_ADMIN_PASSWORD) {
       setAdminAuthed(true); setPasswordError(false); setPasswordInput("");
       setScreen("admin-inbox"); startHeartbeat("admin");
-      if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        Notification.requestPermission();
+      if (typeof Notification !== "undefined") {
+        if (Notification.permission === "default") {
+          Notification.requestPermission().then((perm) => { if (perm === "granted") subscribeAdminToPush(); });
+        } else if (Notification.permission === "granted") {
+          subscribeAdminToPush();
+        }
       }
     } else setPasswordError(true);
   }
