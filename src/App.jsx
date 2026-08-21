@@ -6,7 +6,7 @@ import {
 } from "firebase/firestore";
 import { ArrowLeft, Send, Trash2, ShieldCheck, Zap, LogOut } from "lucide-react";
 
-const DEMO_ADMIN_PASSWORD = "salahsatu"; // TODO: ganti mekanisme ini sebelum benar-benar publik
+const DEMO_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "demo123";
 const ONLINE_WINDOW_MS = 20000;
 const HEARTBEAT_MS = 8000;
 
@@ -74,6 +74,9 @@ export default function App() {
   const scrollRef = useRef(null);
   const heartbeatRef = useRef(null);
 
+  const activeAdminConvoRef = useRef(null);
+  useEffect(() => { activeAdminConvoRef.current = activeAdminConvo; }, [activeAdminConvo]);
+  const prevConvRef = useRef({});
   const needsLive = screen === "visitor-chat" || screen === "admin-inbox" || screen === "admin-chat";
 
   useEffect(() => {
@@ -81,6 +84,21 @@ export default function App() {
     const unsubConv = onSnapshot(collection(db, "conversations"), (snap) => {
       const map = {};
       snap.forEach((d) => (map[d.id] = d.data()));
+
+      if (adminAuthed && typeof Notification !== "undefined" && Notification.permission === "granted") {
+        Object.entries(map).forEach(([name, convo]) => {
+          const prevCount = (prevConvRef.current[name]?.messages || []).filter((m) => m.sender === "visitor").length;
+          const newCount = (convo.messages || []).filter((m) => m.sender === "visitor").length;
+          const isOpenNow = screen === "admin-chat" && activeAdminConvoRef.current === name && document.visibilityState === "visible";
+          if (newCount > prevCount && !isOpenNow) {
+            const last = convo.messages[convo.messages.length - 1];
+            try {
+              new Notification(`Pesan baru dari ${name}`, { body: last?.text || "", tag: `chat-${name}` });
+            } catch (e) { console.error(e); }
+          }
+        });
+      }
+      prevConvRef.current = map;
       setConvMap(map);
     });
     const unsubPres = onSnapshot(collection(db, "presence"), (snap) => {
@@ -135,6 +153,9 @@ export default function App() {
     if (passwordInput === DEMO_ADMIN_PASSWORD) {
       setAdminAuthed(true); setPasswordError(false); setPasswordInput("");
       setScreen("admin-inbox"); startHeartbeat("admin");
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
     } else setPasswordError(true);
   }
   async function openAdminChat(name) {
