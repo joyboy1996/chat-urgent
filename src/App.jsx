@@ -30,7 +30,15 @@ async function subscribeAdminToPush() {
   } catch (e) { console.error("Gagal subscribe push:", e); }
 }
 
-async function notifyAdminPush(title, body) {
+async function notifyAdminWhatsApp(title, body) {
+  try {
+    await fetch("/api/send-whatsapp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: `${title}\n${body}` }),
+    });
+  } catch (e) { console.error("Gagal kirim WA:", e); }
+}
   try {
     const snap = await getDoc(doc(db, "push-subscriptions", "admin"));
     if (!snap.exists()) return;
@@ -125,10 +133,9 @@ export default function App() {
           const newCount = (convo.messages || []).filter((m) => m.sender === "visitor").length;
           const isOpenNow = screen === "admin-chat" && activeAdminConvoRef.current === name && document.visibilityState === "visible";
           if (newCount > prevCount && !isOpenNow) {
-            const last = convo.messages[convo.messages.length - 1];
             if (navigator.serviceWorker) {
               navigator.serviceWorker.ready
-                .then((reg) => reg.showNotification(`Pesan baru dari ${name}`, { body: last?.text || "", tag: `chat-${name}` }))
+                .then((reg) => reg.showNotification(`Pesan baru dari ${name}`, { body: "Ada pesan baru masuk, buka aplikasi untuk melihat.", tag: `chat-${name}` }))
                 .catch((e) => console.error(e));
             }
           }
@@ -183,7 +190,8 @@ export default function App() {
     setDraft("");
     await appendMessage(visitorName, "visitor", text);
     setPresence(visitorName);
-    notifyAdminPush(`Pesan baru dari ${visitorName}`, text);
+    notifyAdminPush(`Pesan baru dari ${visitorName}`, "Ada pesan baru masuk, buka aplikasi untuk melihat.");
+    notifyAdminWhatsApp(`Pesan baru dari ${visitorName}`, "Ada pesan baru masuk, buka aplikasi untuk melihat.");
   }
 
   function tryAdminLogin() {
